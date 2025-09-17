@@ -1,0 +1,583 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Análise Por Centro Custo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* -- Variáveis CSS para as colunas fixas -- */
+            --col-id-width: 80px;
+            --col-conta-width: 250px;
+            --col-generic-sticky-width: 250px; /* Para as outras tabelas */
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            background-image: radial-gradient(#d1d5db 1px, transparent 1px);
+            background-size: 16px 16px;
+        }
+
+        .table-container {
+            max-height: 500px;
+            overflow-y: auto;
+            overflow-x: auto;
+            border-radius: 12px;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        /* Ajustes para a tela cheia */
+        .fullscreen-active { overflow: hidden; }
+        .fullscreen-active header, .fullscreen-active footer { display: none; }
+        .data-card.fullscreen-mode {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            border-radius: 0; z-index: 9999; box-shadow: none; padding: 2rem;
+            display: flex; flex-direction: column; background-color: #fff;
+        }
+        .data-card.fullscreen-mode .table-container {
+            max-height: none; flex-grow: 1; border: none;
+            box-shadow: none; border-radius: 0;
+        }
+
+        table { width: 100%; border-collapse: separate; border-spacing: 0; }
+        thead th {
+            position: sticky; top: 0;
+            background: linear-gradient(to bottom, #1f2937, #111827);
+            color: white; padding: 1rem 1.5rem; text-align: center;
+            font-weight: 600; font-size: 0.9rem; text-transform: uppercase;
+            letter-spacing: 0.05em; border-bottom: 2px solid #374151;
+            cursor: pointer; user-select: none; z-index: 10;
+        }
+        
+        tbody tr:nth-child(even) { background-color: #f9fafb; }
+        tbody tr:hover { background-color: #e5e7eb; }
+        tbody tr.selected {
+            background-color: #bfdbfe;
+            box-shadow: 0 4px 10px rgba(59, 130, 246, 0.2);
+            font-weight: 600;
+        }
+        td.highlighted-column { background-color: #dbeafe !important; }
+        td { padding: 1rem 1.5rem; border-bottom: 1px solid #e5e7eb; text-align: center; }
+
+        /* --- COLUNAS FIXAS DA TABELA PRINCIPAL --- */
+        #original-data-card thead th:first-child,
+        #original-data-card tbody td:first-child {
+            width: var(--col-id-width); min-width: var(--col-id-width); max-width: var(--col-id-width);
+            position: sticky; left: 0; z-index: 2;
+        }
+        #original-data-card thead th:nth-child(2),
+        #original-data-card tbody td:nth-child(2) {
+            width: var(--col-conta-width); min-width: var(--col-conta-width); max-width: var(--col-conta-width);
+            text-align: left; position: sticky; left: var(--col-id-width); z-index: 2;
+        }
+        #original-data-card thead th:is(:first-child, :nth-child(2)) {
+            z-index: 4; box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+        }
+        #original-data-card tbody td:is(:first-child, :nth-child(2)) { background-color: #ffffff; }
+        #original-data-card tbody tr:nth-child(even) td:is(:first-child, :nth-child(2)) { background-color: #f9fafb; }
+        #original-data-card tbody tr:hover td:is(:first-child, :nth-child(2)) { background-color: #e5e7eb; }
+        #original-data-card tbody tr.selected td:is(:first-child, :nth-child(2)) { background-color: #dbeafe; }
+
+        /* --- AJUSTE: COLUNAS FIXAS PARA AS OUTRAS TABELAS --- */
+        #analise-data-card thead th:first-child,
+        #analise-data-card tbody td:first-child,
+        #por-conta-table-container thead th:first-child,
+        #por-conta-table-container tbody td:first-child {
+            width: var(--col-generic-sticky-width);
+            min-width: var(--col-generic-sticky-width);
+            max-width: var(--col-generic-sticky-width);
+            text-align: left; position: sticky; left: 0; z-index: 2;
+        }
+        #analise-data-card thead th:first-child,
+        #por-conta-table-container thead th:first-child {
+            z-index: 4;
+        }
+        #analise-data-card tbody td:first-child,
+        #por-conta-table-container tbody td:first-child { background-color: #ffffff; }
+        #analise-data-card tbody tr:nth-child(even) td:first-child,
+        #por-conta-table-container tbody tr:nth-child(even) td:first-child { background-color: #f9fafb; }
+        #analise-data-card tbody tr:hover td:first-child,
+        #por-conta-table-container tbody tr:hover td:first-child { background-color: #e5e7eb; }
+        #analise-data-card tbody tr.selected td:first-child,
+        #por-conta-table-container tbody tr.selected td:first-child { background-color: #dbeafe; }
+        
+        .collapse-toggle-icon { transition: transform 0.3s ease; }
+        .collapse-toggle-icon.rotated { transform: rotate(180deg); }
+        .modal { transition: opacity 0.3s ease-in-out; z-index: 10000; }
+        .modal-content { transition: transform 0.3s ease-in-out; }
+        .modal.hidden { opacity: 0; pointer-events: none; }
+        .modal.hidden .modal-content { transform: translateY(-20px); }
+
+        /* --- NOVO: Estilo para o overlay de carregamento no modal --- */
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            border-radius: 1rem; /* Mesmo raio de borda do modal */
+        }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen flex flex-col">
+    
+    <header class="bg-slate-800 text-white shadow-lg py-4">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
+            <div class="flex items-center">
+                <img src="{% static 'acqua.jpeg' %}" alt="Logo do Instituto Acqua" class="h-10 w-auto">
+                <h1 class="text-2xl sm:text-3xl font-extrabold ml-4">
+                    <i class="fa-solid fa-chart-line text-blue-400 mr-2"></i> Análise de Custos
+                </h1>
+            </div>
+            <div class="flex items-center gap-4">
+                <span class="font-semibold text-gray-300 hidden sm:block">{{ analysis_name }}</span>
+                <a href="{% url 'upload_file' %}" class="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg shadow-md hover:bg-blue-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                    <i class="fa-solid fa-arrow-left"></i>
+                    <span>Voltar</span>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow container mx-auto px-4 sm:px-6 lg:px-8 my-8">
+        <!-- Adicionado para AJAX -->
+        {% csrf_token %}
+
+        <div class="bg-white rounded-2xl shadow-xl border border-gray-200 p-6 sm:p-8 text-center transition-transform duration-300 hover:scale-105">
+            <h3 class="text-xl font-bold text-slate-700">Total Geral de Despesas: <span class="text-blue-600">{{ total_geral }}</span></h3>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
+            <!-- Card de Dados da Planilha -->
+            <div id="original-data-card" class="data-card bg-white rounded-2xl shadow-xl border border-gray-200 p-6 sm:p-8 transition-transform duration-300 h-full flex flex-col">
+                <div class="flex items-center justify-between pb-4 border-b border-gray-200 mb-4">
+                    <h3 class="text-xl font-bold text-slate-700 flex items-center gap-2">
+                        <i class="fa-solid fa-file-excel text-green-600"></i> Dados da Planilha
+                    </h3>
+                    <div class="flex items-center gap-2">
+                        <a href="{% url 'download_file_view' file_id %}" class="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg shadow-md hover:bg-blue-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2" title="Baixar Planilha Reconstruída">
+                            <i class="fa-solid fa-download"></i>
+                            <span class="hidden sm:inline">Baixar</span>
+                        </a>
+                        <button class="fullscreen-toggle-btn flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-slate-600 rounded-lg shadow-md hover:bg-slate-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2" data-target-card="original-data-card">
+                            <i class="fa-solid fa-expand"></i>
+                            <span class="fullscreen-text hidden sm:inline">Tela Cheia</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="relative mb-4">
+                    <input type="text" placeholder="Filtrar dados..." class="table-filter-input w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500" data-target-container="original-data-card">
+                    <i class="fa-solid fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                </div>
+                <div class="table-container flex-grow">
+                    {{ df_original|safe }}
+                </div>
+            </div>
+
+            <!-- Card de Análise por Área -->
+            <div id="analise-data-card" class="data-card bg-white rounded-2xl shadow-xl border border-gray-200 p-6 sm:p-8 transition-transform duration-300 h-full flex flex-col">
+                <div class="flex items-center justify-between pb-4 border-b border-gray-200 mb-4">
+                    <h3 class="text-xl font-bold text-slate-700 flex items-center gap-2">
+                        <i class="fa-solid fa-list-ol text-blue-600"></i> Análise Por Área
+                    </h3>
+                    <button class="fullscreen-toggle-btn flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-slate-600 rounded-lg shadow-md hover:bg-slate-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2" data-target-card="analise-data-card">
+                        <i class="fa-solid fa-expand"></i>
+                        <span class="fullscreen-text hidden sm:inline">Tela Cheia</span>
+                    </button>
+                </div>
+                <div class="relative mb-4">
+                    <input type="text" placeholder="Filtrar análise..." class="table-filter-input w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500" data-target-container="analise-data-card">
+                    <i class="fa-solid fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                </div>
+                <div class="table-container flex-grow">
+                    {{ df_analise|safe }}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Card de Análise por Conta -->
+        <div class="w-full mt-8">
+            <div id="analise-por-conta-card" class="data-card bg-white rounded-2xl shadow-xl border border-gray-200 p-6 sm:p-8 transition-transform duration-300">
+                <div class="flex items-center justify-between pb-4 border-b border-gray-200 mb-4">
+                    <h3 class="text-xl font-bold text-slate-700 flex items-center gap-2">
+                        <i class="fa-solid fa-calculator text-indigo-600"></i> Análise por Conta
+                    </h3>
+                    <button class="fullscreen-toggle-btn flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-slate-600 rounded-lg shadow-md hover:bg-slate-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2" data-target-card="analise-por-conta-card">
+                        <i class="fa-solid fa-expand"></i>
+                        <span class="fullscreen-text hidden sm:inline">Tela Cheia</span>
+                    </button>
+                </div>
+                <div class="relative mb-4">
+                    <input type="text" placeholder="Filtrar por conta..." class="table-filter-input w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500" data-target-container="analise-por-conta-card">
+                    <i class="fa-solid fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                </div>
+                <div id="por-conta-table-container" class="table-container">
+                    {{ df_por_conta|safe }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Card de Áreas Zeradas -->
+        <div class="w-full mt-8">
+            <div class="bg-white rounded-2xl shadow-xl border border-gray-200 p-6 sm:p-8 transition-transform duration-300">
+                <button id="toggle-zeradas" class="flex justify-between items-center w-full focus:outline-none mb-4">
+                    <h3 class="text-xl font-bold text-slate-700 flex items-center gap-2">
+                        <i class="fa-solid fa-circle-xmark text-red-600"></i> Áreas com Despesas Zeradas
+                    </h3>
+                    <i id="zeradas-icon" class="fa-solid fa-chevron-down text-gray-400 text-lg transition-transform duration-300 collapse-toggle-icon"></i>
+                </button>
+                <div id="content-zeradas" class="hidden">
+                    <p class="text-gray-500 mt-3 mb-4 text-sm">Esta tabela mostra as áreas que não tiveram despesas registradas, ou cuja soma total de despesas foi de R$ 0,00.</p>
+                    <div class="table-container">
+                        {{ df_zeradas|safe }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="bg-slate-800 text-white text-center py-4 mt-8">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <p class="text-sm">&copy; {% now "Y" %} Análise de Despesas. Todos os direitos reservados.</p>
+        </div>
+    </footer>
+
+    <!-- Modais -->
+    <div id="update-total-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden modal">
+        <div class="bg-white rounded-2xl shadow-xl border border-gray-200 p-6 sm:p-8 w-full max-w-sm modal-content relative"> <!-- Adicionado 'relative' -->
+             <!-- NOVO: Overlay de Carregamento -->
+            <div class="loading-overlay hidden" id="modal-loading-overlay">
+                <i class="fa-solid fa-spinner fa-spin text-4xl text-indigo-600"></i>
+            </div>
+            <!-- Fim do Overlay -->
+            <div class="flex justify-between items-center pb-4 border-b border-gray-200 mb-4">
+                <h3 class="text-xl font-bold text-slate-700">Atualizar Total da Linha</h3>
+                <button id="close-update-modal-btn" class="text-gray-400 hover:text-gray-600 focus:outline-none">
+                    <i class="fa-solid fa-xmark text-2xl"></i>
+                </button>
+            </div>
+            <div>
+                <label for="new-total-input" class="block text-sm font-medium text-gray-700 mb-2">Novo Valor Total (R$):</label>
+                <input type="number" step="0.01" id="new-total-input" class="w-full p-2 rounded-lg border-gray-300 focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+            <div class="mt-6 flex justify-end">
+                <button id="confirm-update-btn" class="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">Confirmar</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden modal">
+        <div class="bg-white rounded-2xl shadow-xl border border-gray-200 p-6 sm:p-8 w-full max-w-2xl modal-content">
+            <div class="flex justify-between items-center pb-4 border-b border-gray-200 mb-4">
+                <h3 id="modal-title" class="text-xl font-bold text-slate-700"></h3>
+                <button id="close-modal-btn" class="text-gray-400 hover:text-gray-600 focus:outline-none">
+                    <i class="fa-solid fa-xmark text-2xl"></i>
+                </button>
+            </div>
+            <div id="modal-table-container" class="table-container">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr>
+                            <th class="py-2 px-4 bg-gray-100 text-left text-gray-600 uppercase font-semibold">Área</th>
+                            <th class="py-2 px-4 bg-gray-100 text-left text-gray-600 uppercase font-semibold">Valor (R$)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="modal-table-body">
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-4 pt-4 border-t border-gray-200">
+                <h4 class="text-lg font-bold text-slate-700">
+                    Total da Conta: <span id="modal-total" class="text-indigo-600">R$ 0,00</span>
+                </h4>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- STATE AND HELPERS ---
+            let modalData = {};
+            let currentRow = null;
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            const fileId = '{{ file_id }}';
+
+            function loadModalData() {
+                try {
+                    const rawData = `{{ modal_data|escapejs }}`;
+                    modalData = JSON.parse(rawData);
+                } catch (e) {
+                    console.error("Erro ao carregar dados do modal:", e);
+                }
+            }
+            
+            function formatCurrency(value) {
+                const number = parseFloat(value);
+                if (isNaN(number)) return 'R$ 0,00';
+                return `R$ ${number.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            }
+
+            // --- CORE UPDATE FUNCTION ---
+            function updatePageWithNewData(data) {
+                // 1. Update Total Geral
+                const totalGeralSpan = document.querySelector('.bg-white.rounded-2xl h3 span');
+                if (totalGeralSpan) totalGeralSpan.innerHTML = data.total_geral;
+
+                // 2. Update Table HTML content
+                document.querySelector('#original-data-card .table-container').innerHTML = data.df_original;
+                document.querySelector('#analise-data-card .table-container').innerHTML = data.df_analise;
+                document.getElementById('por-conta-table-container').innerHTML = data.df_por_conta;
+                document.querySelector('#content-zeradas .table-container').innerHTML = data.df_zeradas;
+                
+                // 3. Update Modal Data from server
+                try {
+                    modalData = JSON.parse(data.modal_data);
+                } catch (e) {
+                    console.error("Erro ao atualizar dados do modal:", e);
+                }
+
+                // 4. Re-attach listeners to the new dynamic content
+                rebindDynamicEventListeners();
+            }
+
+            // --- DYNAMIC EVENT BINDING ---
+            function rebindDynamicEventListeners() {
+                document.querySelectorAll('.table-container table').forEach(setupTableInteraction);
+                setupDetailsModalDynamicControls();
+                setupUpdateTotalModalDynamicControls();
+            }
+
+            // --- FEATURE SETUP FUNCTIONS (STATIC AND DYNAMIC) ---
+            function setupFullscreenToggles() {
+                document.querySelectorAll('.fullscreen-toggle-btn').forEach(button => {
+                    const targetCardId = button.dataset.targetCard;
+                    const dataCard = document.getElementById(targetCardId);
+                    if (!dataCard) return;
+                    button.addEventListener('click', () => {
+                        if (!document.fullscreenElement) {
+                            dataCard.requestFullscreen().catch(err => console.error(`Erro: ${err.message}`));
+                        } else {
+                            document.exitFullscreen();
+                        }
+                    });
+                });
+                document.addEventListener('fullscreenchange', () => {
+                    const fullscreenElement = document.fullscreenElement;
+                    document.body.classList.toggle('fullscreen-active', !!fullscreenElement);
+                    document.querySelectorAll('.data-card').forEach(card => {
+                        card.classList.toggle('fullscreen-mode', card === fullscreenElement);
+                    });
+                    document.querySelectorAll('.fullscreen-toggle-btn').forEach(button => {
+                        const icon = button.querySelector('i');
+                        const text = button.querySelector('.fullscreen-text');
+                        const targetCard = document.getElementById(button.dataset.targetCard);
+                        if (targetCard === fullscreenElement) {
+                            text.textContent = 'Sair';
+                            icon.classList.replace('fa-expand', 'fa-compress');
+                        } else {
+                            text.textContent = 'Tela Cheia';
+                            icon.classList.replace('fa-compress', 'fa-expand');
+                        }
+                    });
+                });
+            }
+            
+            function setupCollapsibleSection() {
+                const toggleBtn = document.getElementById('toggle-zeradas');
+                const content = document.getElementById('content-zeradas');
+                const icon = document.getElementById('zeradas-icon');
+                if(toggleBtn && content && icon) {
+                    toggleBtn.addEventListener('click', () => {
+                        content.classList.toggle('hidden');
+                        icon.classList.toggle('rotated');
+                    });
+                }
+            }
+
+            function setupTableFilters() {
+                document.querySelectorAll('.table-filter-input').forEach(input => {
+                    const containerId = input.dataset.targetContainer;
+                    const tableContainer = document.getElementById(containerId);
+                    const table = tableContainer?.querySelector('table');
+                    if (!table) return;
+                    input.addEventListener('input', () => {
+                        const filterText = input.value.toLowerCase();
+                        const rows = table.querySelectorAll('tbody tr');
+                        rows.forEach(row => {
+                            if (row.querySelector('td')?.textContent.trim() === 'TOTAL GERAL') return;
+                            const rowContent = row.textContent.toLowerCase();
+                            row.style.display = rowContent.includes(filterText) ? '' : 'none';
+                        });
+                    });
+                });
+            }
+
+            function setupTableInteraction(table) {
+                if (!table) return;
+                table.addEventListener('click', (event) => {
+                    const clickedRow = event.target.closest('tr');
+                    if (clickedRow && clickedRow.parentElement.tagName === 'TBODY') {
+                        if (clickedRow.classList.contains('selected')) {
+                            clickedRow.classList.remove('selected');
+                        } else {
+                            table.querySelector('tr.selected')?.classList.remove('selected');
+                            clickedRow.classList.add('selected');
+                        }
+                    }
+                });
+                table.querySelectorAll('thead th').forEach((header, colIndex) => {
+                    header.addEventListener('click', () => {
+                        const isHighlighted = header.classList.contains('highlighted-column-header');
+                        table.querySelectorAll('td.highlighted-column').forEach(td => td.classList.remove('highlighted-column'));
+                        table.querySelectorAll('th.highlighted-column-header').forEach(th => th.classList.remove('highlighted-column-header'));
+                        if (!isHighlighted) {
+                            header.classList.add('highlighted-column-header');
+                            table.querySelectorAll(`tbody tr`).forEach(row => {
+                                row.children[colIndex]?.classList.add('highlighted-column');
+                            });
+                        }
+                    });
+                });
+            }
+
+            function setupDetailsModalStaticControls() {
+                const modal = document.getElementById('modal');
+                const closeModalBtn = document.getElementById('close-modal-btn');
+                if (modal && closeModalBtn) {
+                    closeModalBtn.addEventListener('click', () => modal.classList.add('hidden'));
+                }
+            }
+            
+            function setupDetailsModalDynamicControls() {
+                const porContaTableContainer = document.getElementById('por-conta-table-container');
+                if (!porContaTableContainer) return;
+                porContaTableContainer.addEventListener('click', (event) => {
+                    const clickedButton = event.target.closest('.view-details-btn');
+                    if (!clickedButton) return;
+                    
+                    const contaName = clickedButton.dataset.conta;
+                    const data = modalData[contaName];
+                    if (data) {
+                        const modal = document.getElementById('modal');
+                        const modalTitle = document.getElementById('modal-title');
+                        const modalTableBody = document.getElementById('modal-table-body');
+                        const modalTotal = document.getElementById('modal-total');
+                        
+                        modalTableBody.innerHTML = '';
+                        let totalValue = 0;
+                        modalTitle.textContent = `Detalhes da Conta: ${contaName}`;
+                        
+                        data.forEach(item => {
+                            const value = parseFloat(item['Valor (R$)']);
+                            totalValue += value;
+                            const rowHTML = `<tr>
+                                <td class="py-2 px-4 border-b text-left">${item.Area}</td>
+                                <td class="py-2 px-4 border-b text-left">${formatCurrency(value)}</td>
+                            </tr>`;
+                            modalTableBody.insertAdjacentHTML('beforeend', rowHTML);
+                        });
+                        
+                        modalTotal.textContent = formatCurrency(totalValue);
+                        modal.classList.remove('hidden');
+                    } else {
+                        console.warn(`Dados não encontrados para a conta: "${contaName}".`);
+                    }
+                });
+            }
+            
+            function setupUpdateTotalModalStaticControls() {
+                const modal = document.getElementById('update-total-modal');
+                const input = document.getElementById('new-total-input');
+                const confirmBtn = document.getElementById('confirm-update-btn');
+                const closeBtn = document.getElementById('close-update-modal-btn');
+                const loadingOverlay = document.getElementById('modal-loading-overlay');
+
+                if (!modal || !input || !confirmBtn || !closeBtn || !loadingOverlay) return;
+
+                closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
+
+                confirmBtn.addEventListener('click', () => {
+                    const newTotal = parseFloat(input.value) || 0;
+                    if (!currentRow) return;
+
+                    const totalBtn = currentRow.querySelector('.update-total-btn');
+                    const idExcel = totalBtn.dataset.idExcel;
+                    const updateUrl = `/update_row_total/${fileId}/`;
+                    
+                    confirmBtn.disabled = true;
+                    loadingOverlay.classList.remove('hidden');
+
+                    fetch(updateUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrfToken
+                        },
+                        body: JSON.stringify({
+                            id_excel: idExcel,
+                            new_total: newTotal
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success && data.analysis_data) {
+                            updatePageWithNewData(data.analysis_data);
+                            modal.classList.add('hidden');
+                        } else {
+                            console.error('Erro ao salvar:', data.message);
+                            alert('Erro ao salvar os dados. Tente novamente.');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Fetch error:', error);
+                        alert('Ocorreu um erro de comunicação com o servidor.');
+                    })
+                    .finally(() => {
+                        confirmBtn.disabled = false;
+                        loadingOverlay.classList.add('hidden');
+                    });
+                });
+            }
+
+            function setupUpdateTotalModalDynamicControls() {
+                const originalTable = document.querySelector('#original-data-card table');
+                if (!originalTable) return;
+
+                originalTable.addEventListener('click', (event) => {
+                    const button = event.target.closest('.update-total-btn');
+                    if (button) {
+                        const modal = document.getElementById('update-total-modal');
+                        const input = document.getElementById('new-total-input');
+                        currentRow = button.closest('tr');
+                        const originalTotal = parseFloat(button.dataset.rowTotal);
+                        
+                        input.value = originalTotal.toFixed(2);
+                        modal.classList.remove('hidden');
+                    }
+                });
+            }
+
+            // --- INITIALIZATION ---
+            loadModalData();
+            setupFullscreenToggles();
+            setupCollapsibleSection();
+            setupTableFilters();
+            setupDetailsModalStaticControls();
+            setupUpdateTotalModalStaticControls();
+            rebindDynamicEventListeners();
+        });
+    </script>
+</body>
+</html>
